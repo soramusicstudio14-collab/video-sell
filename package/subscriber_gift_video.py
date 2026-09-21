@@ -45,6 +45,7 @@ Requirements
 
 import argparse
 import csv
+import functools
 import math
 import os
 import random
@@ -63,7 +64,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 # --------------------------------------------------------------------------
 W, H = 1080, 1920         # प्रीमियम फुल-HD वर्टिकल
 FPS = 30
-MILESTONES = [1000, 2000, 3000, 4000, 5000, 10000]
+MILESTONES = [1000, 2000, 3000, 4000, 5000, 10000, 50000, 100000]
 
 DEFAULT_OUTDIR = r"D:\ALL AUTOMATION FILE\youtube rendr"
 DEFAULT_NAME_PATTERN = "{name} - {count} SUBSCRIBER - PROOF VIDEO"
@@ -182,6 +183,7 @@ def download_image(url: str, dest_path: Path):
 # --------------------------------------------------------------------------
 # 2) फॉन्ट helpers
 # --------------------------------------------------------------------------
+@functools.lru_cache(maxsize=256)   # हर फ्रेम पर फॉन्ट दोबारा लोड न हो (स्पीड)
 def load_font(path: Path, size: int, variation: str = None):
     font = ImageFont.truetype(str(path), size)
     if variation:
@@ -313,6 +315,8 @@ class EffectSystem:
         self.rays.append(RayBurst(cx, cy))
 
     def step_and_draw(self, base_img: Image.Image):
+        if not self.rays and not self.particles:
+            return   # कुछ ड्रॉ करने को नहीं — बड़ा overlay बनाने की ज़रूरत नहीं (स्पीड)
         overlay = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
         for r in self.rays:
@@ -328,7 +332,11 @@ class EffectSystem:
                 p.draw(draw)
                 alive.append(p)
         self.particles = alive
-        base_img.paste(overlay, (0, 0), overlay)
+        # सिर्फ वही हिस्सा चिपकाओ जहाँ कुछ ड्रॉ हुआ है (नतीजा वही, स्पीड ज़्यादा)
+        box = overlay.getbbox()
+        if box:
+            part = overlay.crop(box)
+            base_img.paste(part, box[:2], part)
 
 
 # --------------------------------------------------------------------------
@@ -360,8 +368,26 @@ RING_PAD = 18
 COUNT_BASELINE_Y = int(H * 0.56) + 227   # काउंट की baseline (पुराने लेआउट जैसी ही)
 
 
+_GLOW_CACHE = {}
+
+
+def _get_glow(ring_r, ring_color):
+    """रिंग-ग्लो सिर्फ ring_r और रंग पर निर्भर है — एक बार बनाकर कैश (blur महंगा है)."""
+    key = (ring_r, ring_color)
+    glow = _GLOW_CACHE.get(key)
+    if glow is None:
+        glow = Image.new("RGBA", (ring_r * 2 + 100, ring_r * 2 + 100), (0, 0, 0, 0))
+        gd = ImageDraw.Draw(glow)
+        gd.ellipse((50, 50, 50 + ring_r * 2, 50 + ring_r * 2), outline=ring_color + (255,), width=8)
+        gd.ellipse((30, 30, 30 + (ring_r + 20) * 2 - 40, 30 + (ring_r + 20) * 2 - 40),
+                   outline=COLORS["violet"] + (120,), width=3)
+        glow = glow.filter(ImageFilter.GaussianBlur(8))
+        _GLOW_CACHE[key] = glow
+    return glow
+
+
 def render_frame(bg, avatar, channel_name, count, fx: EffectSystem, ring_pulse, gift_message=None):
-    frame = bg.copy().convert("RGBA")
+    frame = bg.copy()   # RGB में ही काम (बार-बार RGBA <-> RGB convert से बचत)
     draw = ImageDraw.Draw(frame)
     cx = W // 2
     ay = int(H * 0.30)
@@ -369,12 +395,7 @@ def render_frame(bg, avatar, channel_name, count, fx: EffectSystem, ring_pulse, 
     # प्रीमियम डबल ग्लो रिंग (pulse के साथ)
     ring_r = AVATAR_SIZE // 2 + RING_PAD + int(ring_pulse * 14)
     ring_color = COLORS["gold"] if ring_pulse < 0.5 else COLORS["white"]
-    glow = Image.new("RGBA", (ring_r * 2 + 100, ring_r * 2 + 100), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gd.ellipse((50, 50, 50 + ring_r * 2, 50 + ring_r * 2), outline=ring_color + (255,), width=8)
-    gd.ellipse((30, 30, 30 + (ring_r + 20) * 2 - 40, 30 + (ring_r + 20) * 2 - 40),
-               outline=COLORS["violet"] + (120,), width=3)
-    glow = glow.filter(ImageFilter.GaussianBlur(8))
+    glow = _get_glow(ring_r, ring_color)
     frame.paste(glow, (cx - glow.width // 2, ay - glow.height // 2), glow)
 
     frame.paste(avatar, (cx - AVATAR_SIZE // 2, ay - AVATAR_SIZE // 2), avatar)
@@ -386,8 +407,14 @@ def render_frame(bg, avatar, channel_name, count, fx: EffectSystem, ring_pulse, 
     draw_center_text(draw, cx, ay + AVATAR_SIZE // 2 + 122, "Subscribers", label_font, COLORS["black"], tracking=3)
 
     scale = 1.0 + ring_pulse * 0.06
-    num_font = load_font(FONT_COUNT, int(210 * scale))
     count_text = f"{count:,}"
+    num_size = int(210 * scale)
+    num_font = load_font(FONT_COUNT, num_size)
+    # बहुत लंबा नंबर (जैसे 100,000) स्क्रीन से बाहर न जाए — ज़रूरत हो तो ही थोड़ा छोटा
+    max_w = W - 100
+    text_w = num_font.getlength(count_text)
+    if text_w > max_w:
+        num_font = load_font(FONT_COUNT, int(num_size * max_w / text_w))
     # baseline पहले जैसी ही रखी है (ताकि नंबर की पोज़िशन न बदले); Arial Black, काला रंग
     draw.text((cx, COUNT_BASELINE_Y), count_text, font=num_font, fill=COLORS["black"], anchor="ms")
 
@@ -396,7 +423,7 @@ def render_frame(bg, avatar, channel_name, count, fx: EffectSystem, ring_pulse, 
         draw_center_text(draw, cx, int(H * 0.86), gift_message, msg_font, COLORS["muted"])
 
     fx.step_and_draw(frame)
-    return frame.convert("RGB")
+    return frame
 
 
 # --------------------------------------------------------------------------
@@ -468,8 +495,23 @@ def render_video(channel_name, avatar_img, target, out_path: Path,
                   start_override=None, with_sound=True, gift_message=None,
                   tmp_dir: Path = None, keep_frames=False):
     tmp_dir = tmp_dir or Path(tempfile.mkdtemp(prefix="giftvideo_"))
-    frames_dir = tmp_dir / "frames"
-    frames_dir.mkdir(parents=True, exist_ok=True)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
+    # फ्रेम्स PNG फाइल के रूप में सेव करने की जगह सीधे ffmpeg में भेजे जाते हैं (बहुत तेज़)
+    video_only = (tmp_dir / "video_only.mp4") if with_sound else out_path
+    ff = subprocess.Popen(
+        ["ffmpeg", "-y", "-loglevel", "error",
+         "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-framerate", str(FPS), "-i", "-",
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+         "-pix_fmt", "yuv420p", "-r", str(FPS), str(video_only)],
+        stdin=subprocess.PIPE,
+    )
+
+    def emit(img):
+        try:
+            ff.stdin.write(img.tobytes())
+        except BrokenPipeError:
+            raise RuntimeError("ffmpeg बीच में बंद हो गया (ffmpeg install/PATH चेक करें)")
 
     bg = make_background(W, H)
     fx = EffectSystem()
@@ -486,7 +528,7 @@ def render_video(channel_name, avatar_img, target, out_path: Path,
     # छोटा इंट्रो (0 pulse, स्थिर)
     for _ in range(intro_frames):
         img = render_frame(bg, avatar_img, channel_name, start, fx, 0.0, gift_message)
-        img.save(frames_dir / f"f_{frame_idx:05d}.png")
+        emit(img)
         frame_idx += 1
 
     for (frm, to, secs, big_jump) in segments:
@@ -495,7 +537,7 @@ def render_video(channel_name, avatar_img, target, out_path: Path,
             t = ease_out_cubic(f / max(1, n_frames - 1))
             count = int(frm + (to - frm) * t)
             img = render_frame(bg, avatar_img, channel_name, count, fx, 0.0, gift_message)
-            img.save(frames_dir / f"f_{frame_idx:05d}.png")
+            emit(img)
             frame_idx += 1
 
         burst_frames.append(frame_idx)
@@ -503,40 +545,32 @@ def render_video(channel_name, avatar_img, target, out_path: Path,
         for hf in range(hold_frames):
             pulse = math.sin((hf / hold_frames) * math.pi)
             img = render_frame(bg, avatar_img, channel_name, to, fx, pulse, gift_message)
-            img.save(frames_dir / f"f_{frame_idx:05d}.png")
+            emit(img)
             frame_idx += 1
 
     final_burst_frame = frame_idx
     for _ in range(outro_frames):
         img = render_frame(bg, avatar_img, channel_name, target, fx, 0.0, gift_message)
-        img.save(frames_dir / f"f_{frame_idx:05d}.png")
+        emit(img)
         frame_idx += 1
 
     total_frames = frame_idx
     print(f"  कुल फ्रेम्स: {total_frames}  (~{total_frames / FPS:.1f} सेकंड)")
 
-    audio_path = None
+    ff.stdin.close()
+    if ff.wait() != 0:
+        raise RuntimeError("ffmpeg वीडियो एनकोड नहीं कर पाया")
+
     if with_sound:
         audio_path = tmp_dir / "audio.wav"
         build_audio_track(total_frames, burst_frames, final_burst_frame, audio_path)
-
-    cmd = ["ffmpeg", "-y", "-framerate", str(FPS), "-i", str(frames_dir / "f_%05d.png")]
-    if audio_path:
-        cmd += ["-i", str(audio_path)]
-    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-r", str(FPS)]
-    if audio_path:
-        cmd += ["-c:a", "aac", "-shortest"]
-    cmd += [str(out_path)]
-
-    subprocess.run(cmd, check=True)
+        # वीडियो को दोबारा एनकोड किए बिना सिर्फ आवाज़ जोड़ना (कुछ ही सेकंड)
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", str(video_only), "-i", str(audio_path),
+             "-c:v", "copy", "-c:a", "aac", "-shortest", str(out_path)],
+            check=True,
+        )
     print(f"  ✅ सेव हुआ: {out_path}")
-
-    if not keep_frames:
-        try:
-            for f in frames_dir.glob("*.png"):
-                f.unlink()
-        except Exception:
-            pass
 
 
 # --------------------------------------------------------------------------

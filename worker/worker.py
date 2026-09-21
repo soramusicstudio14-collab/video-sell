@@ -258,7 +258,7 @@ def fallback_channel_info(yt_handle):
 # subscriber_gift_video.py ke apne CLI arguments hain (--channel, --target, --name,
 # --avatar, --outdir, ...). Ye worker.py ke pehle wale --channel-name/--target-subs/
 # --output se MATCH nahi karte the — isliye yahan sahi arguments bheje ja rahe hain.
-ALLOWED_TARGETS = {"1000", "2000", "3000", "4000", "5000", "10000"}
+ALLOWED_TARGETS = {"1000", "2000", "3000", "4000", "5000", "10000", "50000", "100000"}
 
 
 def generate_video(channel_handle, channel_name, avatar_url, target_subs, order_id):
