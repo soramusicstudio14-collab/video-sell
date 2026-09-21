@@ -192,26 +192,55 @@ def get_channel_info(yt_handle):
 
 
 # ------------------------------------------------------------------ VIDEO GENERATION
-def generate_video(channel_name, target_subs, order_id):
+# subscriber_gift_video.py ke apne CLI arguments hain (--channel, --target, --name,
+# --avatar, --outdir, ...). Ye worker.py ke pehle wale --channel-name/--target-subs/
+# --output se MATCH nahi karte the — isliye yahan sahi arguments bheje ja rahe hain.
+ALLOWED_TARGETS = {"1000", "2000", "3000", "4000", "5000", "10000"}
+
+
+def generate_video(channel_handle, channel_name, avatar_url, target_subs, order_id):
     """
     Tumhari subscriber_gift_video.py ko call karta hai.
+    Ye script ek single --output file path le nahi sakti — sirf --outdir (folder)
+    leti hai aur khud apna filename banati hai. Isliye har order ke liye ek alag
+    (unique) sub-folder banate hain, script chalate hain, aur phir usme jo .mp4
+    bani hai use dhundh lete hain.
     """
     import subprocess
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    out_path = os.path.join(OUTPUT_DIR, f"{order_id}.mp4")
+    import glob
+
+    target_str = str(int(float(target_subs)))
+    if target_str not in ALLOWED_TARGETS:
+        raise RuntimeError(
+            f"target_subs '{target_subs}' allowed values me nahi hai: {sorted(ALLOWED_TARGETS)}"
+        )
+
+    out_dir = os.path.join(OUTPUT_DIR, order_id)
+    os.makedirs(out_dir, exist_ok=True)
 
     cmd = [
         sys.executable, VIDEO_SCRIPT_PATH,
-        "--channel-name", channel_name,
-        "--target-subs", str(target_subs),
-        "--output", out_path,
+        "--channel", channel_handle,
+        "--target", target_str,
+        "--outdir", out_dir,
     ]
+    if channel_name:
+        cmd += ["--name", channel_name]
+    if avatar_url:
+        cmd += ["--avatar", avatar_url]
+
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
     if result.returncode != 0:
         raise RuntimeError(f"video script fail: {result.stderr[-800:]}")
-    if not os.path.exists(out_path):
-        raise RuntimeError("video file bana nahi (output path check karo)")
-    return out_path
+
+    mp4_files = sorted(
+        glob.glob(os.path.join(out_dir, "*.mp4")),
+        key=os.path.getmtime,
+        reverse=True,
+    )
+    if not mp4_files:
+        raise RuntimeError(f"video file bana nahi (outdir check karo: {out_dir})")
+    return mp4_files[0]
 
 
 # ------------------------------------------------------------------ GOOGLE DRIVE (fallback only)
@@ -294,7 +323,13 @@ def process_due_orders():
                 update_row(tab, row_number, status="needs_manual")
                 continue
 
-            video_path = generate_video(info["title"], subs, order_id)
+            video_path = generate_video(
+                channel_handle=yt_handle,
+                channel_name=info["title"],
+                avatar_url=info.get("photo_url"),
+                target_subs=subs,
+                order_id=order_id,
+            )
             size_mb = os.path.getsize(video_path) / (1024 * 1024)
 
             subject = "Aapka Subscriber Gift Video taiyar hai! 🎁"
