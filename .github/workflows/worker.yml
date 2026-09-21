@@ -1,0 +1,50 @@
+name: gift-video-worker
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # har 10 minute check karta hai
+  workflow_dispatch: {}       # GitHub tab se manually bhi chala sakte ho
+
+jobs:
+  process-orders:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ffmpeg (video script ko chahiye ho sakta hai)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: pip install -r worker/requirements.txt
+
+      - name: Check ki PC online hai ya nahi
+        id: pc_check
+        env:
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: python worker/check_pc_status.py
+        continue-on-error: true
+
+      - name: Google Drive OAuth token file banayein (Secret se)
+        if: steps.pc_check.outcome == 'success'
+        run: echo '${{ secrets.DRIVE_TOKEN_JSON }}' > worker/token.json
+
+      - name: Due orders process karein (sirf agar PC offline tha)
+        if: steps.pc_check.outcome == 'success'
+        working-directory: worker
+        env:
+          SHEET_ID: ${{ secrets.SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_APP_PASSWORD: ${{ secrets.EMAIL_APP_PASSWORD }}
+        run: python worker.py --once
+
+      - name: token.json hataayein (security)
+        if: always()
+        run: rm -f worker/token.json

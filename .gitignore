@@ -1,0 +1,6 @@
+node_modules/
+worker/credentials.json
+worker/token.json
+worker/output_videos/
+.env
+.netlify/

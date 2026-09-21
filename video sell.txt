@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Subscriber Gift Video</title>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --line:#262b36; --text:#eef0f4; --muted:#9aa3b2;
+    --accent:#ff5f6d; --accent2:#ffc371; --good:#3ddc97;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+  header{padding:32px 20px 12px;text-align:center}
+  header h1{margin:0 0 6px;font-size:1.8rem}
+  header p{color:var(--muted);margin:0}
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px 60px}
+  .section{margin-top:36px}
+  .section h2{margin:0 0 4px}
+  .section-sub{color:var(--muted);font-size:.85rem;margin:0 0 16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
+
+  /* phone demo player */
+  .phone{width:230px;margin:0 auto;background:#000;border-radius:28px;padding:10px;border:2px solid #333}
+  .phone video{width:100%;border-radius:18px;display:block;background:#000}
+  .phone-caption{text-align:center;color:var(--muted);font-size:.85rem;margin-top:10px}
+
+  /* pricing chart */
+  table{width:100%;border-collapse:collapse;font-size:.95rem}
+  th,td{padding:10px 8px;text-align:center;border-bottom:1px solid var(--line)}
+  th{color:var(--accent2)}
+  tr:hover td{background:#1d212b}
+  .price{font-weight:700;color:var(--good)}
+  .note{color:var(--muted);font-size:.82rem;margin-top:10px}
+
+  /* form */
+  label{display:block;margin:14px 0 6px;font-size:.9rem;color:var(--muted)}
+  input,select{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:#0e1015;color:var(--text);font-size:1rem}
+  button{margin-top:20px;width:100%;padding:14px;border:none;border-radius:10px;background:linear-gradient(90deg,var(--accent),var(--accent2));color:#111;font-weight:700;font-size:1.05rem;cursor:pointer}
+  button:disabled{opacity:.6;cursor:not-allowed}
+  .plan-amount{font-weight:700;color:var(--accent2)}
+  #status{margin-top:16px;padding:12px;border-radius:10px;display:none;font-size:.9rem}
+  #status.ok{display:block;background:#123d2a;color:var(--good)}
+  #status.err{display:block;background:#3d1212;color:#ff8f8f}
+  .disclaimer{font-size:.78rem;color:var(--muted);margin-top:10px}
+  footer{color:var(--muted);font-size:.8rem;text-align:center;margin-top:50px}
+  a{color:var(--accent2)}
+
+  /* reviews slider */
+  .review-track-wrap{overflow:hidden;position:relative;-webkit-mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent);mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
+  .review-track{display:flex;gap:14px;width:max-content;animation:scrollReviews 55s linear infinite}
+  .review-track-wrap:hover .review-track{animation-play-state:paused}
+  @keyframes scrollReviews{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+  .review-card{flex:0 0 240px;background:#0e1015;border:1px solid var(--line);border-radius:14px;padding:16px}
+  .review-stars{color:#ffc94d;font-size:.9rem;letter-spacing:1px}
+  .review-text{font-size:.86rem;color:var(--text);margin:8px 0 10px}
+  .review-name{font-size:.8rem;color:var(--muted);font-weight:600}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>💻 CODE CRAFTERS</h1>
+  <p>YOUR CHANNEL'S SUBSCRIBER MILESTONE</p>
+</header>
+
+<div class="wrap">
+
+  <!-- DEMO PLAYER -->
+  <div class="section card" style="text-align:center">
+    <div class="phone">
+      <video id="demoVideo" controls playsinline></video>
+    </div>
+    <div class="phone-caption">Power Of Coding</div>
+  </div>
+
+  <!-- ORDER FORM -->
+  <div class="section card">
+    <h2 style="margin-top:0">SUBMIT DETAILS</h2>
+
+    <label for="ytHandle">YouTube Handle (Like @yourchannel)</label>
+    <input id="ytHandle" type="text" placeholder="@yourchannel" required />
+
+    <label for="email">Email ID</label>
+    <input id="email" type="email" placeholder="you@example.com" required />
+
+    <label for="plan">SELECT YOUR PLAN</label>
+    <select id="plan"></select>
+
+    <p style="margin-top:14px"> Your Payment Is : <span class="plan-amount" id="planAmount">₹11</span></p>
+
+    <button id="payBtn">Pay & Order</button>
+    <div id="status"></div>
+
+    <p class="disclaimer">
+      Order karke aap confirm karte hain ki yeh video sirf ek personalised gift/celebration video hai,
+      isse aapke real YouTube subscribers nahi badhte. Payment ke baad koi refund nahi hoga (video generate
+      hone ke baad). Sahayata ke liye:
+      <a id="supportLink" href="#">humein email karein</a>
+    </p>
+  </div>
+  
+  <!-- REVIEWS SLIDER -->
+  <div class="section">
+    <h2>Customers kya kehte hain</h2>
+    <p class="section-sub">Sample reviews — inhe apne asli customer reviews se badal dena (SETUP.md dekhein)</p>
+    <div class="review-track-wrap">
+      <div class="review-track" id="reviewTrack"></div>
+    </div>
+  </div>
+
+</div>
+
+<footer>© <span id="year"></span> Subscriber Gift Video · Powered by Razorpay</footer>
+
+<script>
+/* ====================== CONFIG — apne values yahan bharein ====================== */
+const CONFIG = {
+  DEMO_VIDEO_URL: "https://drive.google.com/uc?export=download&id=YOUR_DEMO_FILE_ID", // Drive direct-view link
+  RAZORPAY_KEY_ID: "rzp_test_XXXXXXXXXX",           // Razorpay Dashboard > Key Id (public, safe to expose)
+  CREATE_ORDER_URL: "/.netlify/functions/create-order",
+  SUPPORT_EMAIL: "support@example.com",              // aapka support email
+  DEFAULT_PLAN_INDEX: 0,                              // 0 = ₹11 wala plan — yeh hamesha page load par pehle se select rahega
+  PLANS: [
+    { price: 11,  subs: 1000,  hours: 1  },
+    { price: 21,  subs: 2000,  hours: 2  },
+    { price: 31,  subs: 3000,  hours: 3  },
+    { price: 41,  subs: 4000,  hours: 4  },
+    { price: 51,  subs: 5000,  hours: 5  },
+    { price: 101, subs: 10000, hours: 10 },
+  ],
+  // Yeh sample reviews hain — apne asli customer reviews se replace kar dena.
+  REVIEWS: [
+    { name: "Rohit S.", stars: 5, text: "Video bahut achha bana, 1 ghante ke andar email aa gayi." },
+    { name: "Priya M.", stars: 5, text: "Birthday surprise ke liye perfect tha, sab impress ho gaye." },
+    { name: "Aman K.", stars: 4, text: "Quality achhi thi, thoda aur customization mil jaye to best." },
+    { name: "Sneha R.", stars: 5, text: "Order karna bahut easy tha, payment se lekar email tak sab smooth." },
+    { name: "Vikram T.", stars: 5, text: "5000 wala plan liya, animation kaafi professional lagi." },
+    { name: "Kavita J.", stars: 4, text: "Achha experience raha, delivery time bhi bataye hisaab se hua." },
+    { name: "Rahul D.", stars: 5, text: "Dost ke channel ke naam se banwaya, wo bahut khush hua." },
+    { name: "Neha P.", stars: 5, text: "Price ke hisaab se quality bahut badhiya hai." },
+    { name: "Sameer A.", stars: 4, text: "Simple process, video bhi time par mil gayi." },
+    { name: "Pooja V.", stars: 5, text: "First time try kiya, ab regular customer ban gaya hoon." },
+    { name: "Arjun N.", stars: 5, text: "10000 wala plan liya celebration ke liye, zabardast bana." },
+    { name: "Isha B.", stars: 4, text: "Email par seedha video mil gayi, alag se download nahi karna pada." },
+    { name: "Manish G.", stars: 5, text: "Bahut hi creative idea hai, sabko pasand aaya." },
+    { name: "Divya S.", stars: 5, text: "Support team ne bhi jaldi reply kiya jab sawal poocha." },
+    { name: "Karan L.", stars: 5, text: "Best gift for YouTuber friends, price bhi affordable hai." },
+  ]
+};
+/* ================================================================================= */
+
+document.getElementById("year").textContent = new Date().getFullYear();
+document.getElementById("demoVideo").src = CONFIG.DEMO_VIDEO_URL;
+document.getElementById("supportLink").href = "mailto:" + CONFIG.SUPPORT_EMAIL;
+
+// --- Pricing table + plan select (₹11 / index 0 hamesha default) ---
+const tbody = document.getElementById("planTable");
+const select = document.getElementById("plan");
+CONFIG.PLANS.forEach((p, i) => {
+  tbody.innerHTML += `<tr><td class="price">₹${p.price}</td><td>${p.subs.toLocaleString("en-IN")}</td><td>${p.hours} ghante baad</td></tr>`;
+  const selectedAttr = i === CONFIG.DEFAULT_PLAN_INDEX ? "selected" : "";
+  select.innerHTML += `<option value="${i}" ${selectedAttr}>₹${p.price} — ${p.subs.toLocaleString("en-IN")} subscribers (${p.hours}h)</option>`;
+});
+select.value = String(CONFIG.DEFAULT_PLAN_INDEX);
+
+function updateAmount() {
+  const p = CONFIG.PLANS[select.value];
+  document.getElementById("planAmount").textContent = "₹" + p.price;
+}
+select.addEventListener("change", updateAmount);
+updateAmount();
+
+// --- Reviews slider: list ko do baar render karte hain taaki loop seamless dikhe ---
+const reviewTrack = document.getElementById("reviewTrack");
+function starString(n) { return "★".repeat(n) + "☆".repeat(5 - n); }
+function renderReviews() {
+  const cards = CONFIG.REVIEWS.map(r => `
+    <div class="review-card">
+      <div class="review-stars">${starString(r.stars)}</div>
+      <div class="review-text">"${r.text}"</div>
+      <div class="review-name">— ${r.name}</div>
+    </div>`).join("");
+  reviewTrack.innerHTML = cards + cards; // duplicate for infinite scroll illusion
+}
+renderReviews();
+
+// --- Order form ---
+const statusEl = document.getElementById("status");
+function showStatus(msg, ok) {
+  statusEl.textContent = msg;
+  statusEl.className = ok ? "ok" : "err";
+}
+
+document.getElementById("payBtn").addEventListener("click", async () => {
+  const ytHandle = document.getElementById("ytHandle").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const plan = CONFIG.PLANS[select.value];
+
+  if (!ytHandle.startsWith("@") || ytHandle.length < 3) {
+    return showStatus("Sahi YouTube handle bharein (jaise @yourchannel)", false);
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return showStatus("Sahi email ID bharein", false);
+  }
+
+  const btn = document.getElementById("payBtn");
+  btn.disabled = true;
+  btn.textContent = "Order ban raha hai...";
+
+  try {
+    // Step 1: Netlify function order create karta hai + Google Sheet me "pending" row daalta hai
+    const res = await fetch(CONFIG.CREATE_ORDER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ytHandle, email,
+        planIndex: Number(select.value),
+        amount: plan.price, subs: plan.subs, hours: plan.hours
+      })
+    });
+    const data = await res.json();
+    if (!data.orderId) throw new Error(data.error || "Order create nahi ho paya");
+
+    // Step 2: Razorpay checkout kholein
+    const rzp = new Razorpay({
+      key: CONFIG.RAZORPAY_KEY_ID,
+      amount: data.amount, // paise me
+      currency: "INR",
+      name: "Subscriber Gift Video",
+      description: plan.subs.toLocaleString("en-IN") + " subscribers video",
+      order_id: data.orderId,
+      prefill: { email: email },
+      handler: function (response) {
+        showStatus("✅ Payment ho gaya! Aapka video " + plan.hours + " ghante me is email par aayega: " + email + ". Order ID: " + data.internalOrderId, true);
+      },
+      modal: {
+        ondismiss: function () {
+          btn.disabled = false;
+          btn.textContent = "Pay & Order";
+        }
+      },
+      theme: { color: "#ff5f6d" }
+    });
+    rzp.on("payment.failed", function (response) {
+      showStatus("❌ Payment fail ho gaya: " + response.error.description, false);
+      btn.disabled = false;
+      btn.textContent = "Pay & Order";
+    });
+    rzp.open();
+  } catch (e) {
+    showStatus("❌ " + e.message, false);
+    btn.disabled = false;
+    btn.textContent = "Pay & Order";
+  }
+});
+</script>
+</body>
+</html>

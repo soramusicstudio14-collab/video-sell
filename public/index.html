@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Coder Crafts</title>
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<style>
+  :root{
+    --bg:#0f1115; --card:#171a21; --line:#262b36; --text:#eef0f4; --muted:#9aa3b2;
+    --accent:#ff5f6d; --accent2:#ffc371; --good:#3ddc97;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+  header{padding:32px 20px 12px;text-align:center}
+  header h1{margin:0 0 6px;font-size:1.8rem}
+  header p{color:var(--muted);margin:0}
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px 60px}
+  .section{margin-top:36px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
+
+  /* phone demo player */
+  .phone{width:230px;margin:0 auto;background:#000;border-radius:28px;padding:10px;border:2px solid #333}
+  .phone video{width:100%;border-radius:18px;display:block;background:#000}
+  .phone-caption{text-align:center;color:var(--muted);font-size:.85rem;margin-top:10px}
+
+  /* pricing chart */
+  table{width:100%;border-collapse:collapse;font-size:.95rem}
+  th,td{padding:10px 8px;text-align:center;border-bottom:1px solid var(--line)}
+  th{color:var(--accent2)}
+  tr:hover td{background:#1d212b}
+  .price{font-weight:700;color:var(--good)}
+  .note{color:var(--muted);font-size:.82rem;margin-top:10px}
+
+  /* form */
+  label{display:block;margin:14px 0 6px;font-size:.9rem;color:var(--muted)}
+  input,select{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:#0e1015;color:var(--text);font-size:1rem}
+  button{margin-top:20px;width:100%;padding:14px;border:none;border-radius:10px;background:linear-gradient(90deg,var(--accent),var(--accent2));color:#111;font-weight:700;font-size:1.05rem;cursor:pointer}
+  button:disabled{opacity:.6;cursor:not-allowed}
+  .plan-amount{font-weight:700;color:var(--accent2)}
+  #status{margin-top:16px;padding:12px;border-radius:10px;display:none;font-size:.9rem}
+  #status.ok{display:block;background:#123d2a;color:var(--good)}
+  #status.err{display:block;background:#3d1212;color:#ff8f8f}
+  .disclaimer{font-size:.78rem;color:var(--muted);margin-top:10px}
+  footer{color:var(--muted);font-size:.8rem;text-align:center;margin-top:50px}
+  a{color:var(--accent2)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>💻 Coder Crafts</h1>
+  <p>YOUR CHANNEL'S SUBSCRIBER MILESTONE</p>
+</header>
+
+<div class="wrap">
+
+  <!-- DEMO PLAYER -->
+  <div class="section card" style="text-align:center">
+    <div class="phone">
+      <video id="demoVideo" controls playsinline></video>
+    </div>
+    <div class="phone-caption">Power Of Coding</div>
+  </div>
+
+  <!-- SUBMIT DETAILS (order form) -->
+  <div class="section card">
+    <h2 style="margin-top:0">Submit Details</h2>
+
+    <label for="ytHandle">YouTube Handle (e.g. @yourchannel)</label>
+    <input id="ytHandle" type="text" placeholder="@yourchannel" required />
+
+    <label for="email">Email ID</label>
+    <input id="email" type="email" placeholder="you@example.com" required />
+
+    <label for="plan">Select your Best plan</label>
+    <select id="plan"></select>
+
+    <p style="margin-top:14px">Your payment is: <span class="plan-amount" id="planAmount">₹11</span></p>
+
+    <button id="payBtn">Pay & Order</button>
+    <div id="status"></div>
+
+    <p class="disclaimer">
+      PAYMENT HAPPENS ON RAZORPAY'S SECURE PAGE. CARD OR UPI DETAILS DO NOT COME TO US.
+      <a id="supportLink" href="#">Contact us</a>.
+    </p>
+  </div>
+
+  <!-- PRICING PLANS -->
+  <div class="section card">
+    <h2 style="margin-top:0">All Plans</h2>
+    <table>
+      <thead>
+        <tr><th>Price</th><th>Subscribers</th><th>Processing Time</th></tr>
+      </thead>
+      <tbody id="planTable"></tbody>
+    </table>
+    <p class="note">⚠️ Choose Best One For You.</p>
+  </div>
+
+</div>
+
+<footer>© <span id="year"></span> Coder Crafts · Powered by Razorpay</footer>
+
+<script>
+/* ====================== CONFIG — fill in your own values ====================== */
+const CONFIG = {
+  DEMO_VIDEO_URL: "https://files.catbox.moe/60oowx.mp4", // Drive direct-view link
+  RAZORPAY_KEY_ID: "rzp_live_TeJcYeXopidlkI",           // Razorpay Dashboard > Key Id (public, safe to expose)
+  CREATE_ORDER_URL: "/.netlify/functions/create-order",
+  SUPPORT_EMAIL: "soramusicstudio14@gmail.com",              // your support email
+  DEFAULT_PLAN_INDEX: 0,                              // 0 = ₹11 plan — always pre-selected on page load
+  PLANS: [
+    { price: 11,  subs: 1000,  hours: 1  },
+    { price: 21,  subs: 2000,  hours: 2  },
+    { price: 31,  subs: 3000,  hours: 3  },
+    { price: 41,  subs: 4000,  hours: 4  },
+    { price: 51,  subs: 5000,  hours: 5  },
+    { price: 1, subs: 10000, hours: 0.1667 },
+  ]
+};
+/* ================================================================================= */
+
+document.getElementById("year").textContent = new Date().getFullYear();
+document.getElementById("demoVideo").src = CONFIG.DEMO_VIDEO_URL;
+document.getElementById("supportLink").href = "mailto:" + CONFIG.SUPPORT_EMAIL;
+
+// --- Pricing table + plan select (₹11 / index 0 is always the default) ---
+const tbody = document.getElementById("planTable");
+const select = document.getElementById("plan");
+CONFIG.PLANS.forEach((p, i) => {
+  tbody.innerHTML += `<tr><td class="price">₹${p.price}</td><td>${p.subs.toLocaleString("en-IN")}</td><td>${p.hours}h later</td></tr>`;
+  const selectedAttr = i === CONFIG.DEFAULT_PLAN_INDEX ? "selected" : "";
+  select.innerHTML += `<option value="${i}" ${selectedAttr}>₹${p.price} — ${p.subs.toLocaleString("en-IN")} subscribers (${p.hours}h)</option>`;
+});
+select.value = String(CONFIG.DEFAULT_PLAN_INDEX);
+
+function updateAmount() {
+  const p = CONFIG.PLANS[select.value];
+  document.getElementById("planAmount").textContent = "₹" + p.price;
+}
+select.addEventListener("change", updateAmount);
+updateAmount();
+
+// --- Order form ---
+const statusEl = document.getElementById("status");
+function showStatus(msg, ok) {
+  statusEl.textContent = msg;
+  statusEl.className = ok ? "ok" : "err";
+}
+
+document.getElementById("payBtn").addEventListener("click", async () => {
+  const ytHandle = document.getElementById("ytHandle").value.trim();
+  const email = document.getElementById("email").value.trim();
+  const plan = CONFIG.PLANS[select.value];
+
+  if (!ytHandle.startsWith("@") || ytHandle.length < 3) {
+    return showStatus("Please enter a valid YouTube handle (e.g. @yourchannel)", false);
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return showStatus("Please enter a valid email ID", false);
+  }
+
+  const btn = document.getElementById("payBtn");
+  btn.disabled = true;
+  btn.textContent = "Creating order...";
+
+  try {
+    // Step 1: Netlify function creates the Razorpay order + logs a "pending" row in Google Sheet
+    const res = await fetch(CONFIG.CREATE_ORDER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ytHandle, email,
+        planIndex: Number(select.value),
+        amount: plan.price, subs: plan.subs, hours: plan.hours
+      })
+    });
+    const data = await res.json();
+    if (!data.orderId) throw new Error(data.error || "Could not create order");
+
+    // Step 2: open Razorpay checkout
+    const rzp = new Razorpay({
+      key: CONFIG.RAZORPAY_KEY_ID,
+      amount: data.amount, // in paise
+      currency: "INR",
+      name: "Coder Crafts",
+      description: plan.subs.toLocaleString("en-IN") + " subscribers video",
+      order_id: data.orderId,
+      prefill: { email: email },
+      handler: function (response) {
+        showStatus("✅ Payment successful! Your video will arrive at " + email + " in " + plan.hours + " hour(s). Order ID: " + data.internalOrderId, true);
+      },
+      modal: {
+        ondismiss: function () {
+          btn.disabled = false;
+          btn.textContent = "Pay & Order";
+        }
+      },
+      theme: { color: "#ff5f6d" }
+    });
+    rzp.on("payment.failed", function (response) {
+      showStatus("❌ Payment failed: " + response.error.description, false);
+      btn.disabled = false;
+      btn.textContent = "Pay & Order";
+    });
+    rzp.open();
+  } catch (e) {
+    showStatus("❌ " + e.message, false);
+    btn.disabled = false;
+    btn.textContent = "Pay & Order";
+  }
+});
+</script>
+</body>
+</html>
