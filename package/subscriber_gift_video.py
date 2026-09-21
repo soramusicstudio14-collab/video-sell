@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Subscriber Gift Video Generator (Bulk)
+Subscriber Proof Video Generator (Bulk)
 ========================================
 अपने सब्सक्राइबर्स को गिफ्ट के तौर पर भेजने के लिए — उनके चैनल के नाम से
 प्रोफाइल फोटो + नाम अपने-आप निकालकर, एक प्रीमियम-लुक "सब्सक्राइबर माइलस्टोन"
@@ -12,7 +12,7 @@ Subscriber Gift Video Generator (Bulk)
     D:\\ALL AUTOMATION FILE\\youtube rendr
 
 फाइल नाम पैटर्न (डिफ़ॉल्ट, --name-pattern से बदल सकते हैं):
-    <ChannelName> - <count> SUBSCRIBER - GIFT VIDEO.mp4
+    <ChannelName> - <count> SUBSCRIBER - PROOF VIDEO.mp4
 
 
 इस्तेमाल
@@ -29,7 +29,7 @@ Subscriber Gift Video Generator (Bulk)
     # फोल्डर/फाइलनेम कस्टम
     python subscriber_gift_video.py --channel "@xyz" --target 1000 ^
         --outdir "D:\\ALL AUTOMATION FILE\\youtube rendr" ^
-        --name-pattern "{name} - {count} SUBSCRIBER - GIFT VIDEO"
+        --name-pattern "{name} - {count} SUBSCRIBER - PROOF VIDEO"
 
 list.csv का उदाहरण:
     channel,target,message
@@ -66,7 +66,7 @@ FPS = 30
 MILESTONES = [1000, 2000, 3000, 4000, 5000, 10000]
 
 DEFAULT_OUTDIR = r"D:\ALL AUTOMATION FILE\youtube rendr"
-DEFAULT_NAME_PATTERN = "{name} - {count} SUBSCRIBER - GIFT VIDEO"
+DEFAULT_NAME_PATTERN = "{name} - {count} SUBSCRIBER - PROOF VIDEO"
 
 COLORS = {
     "bg_top":    (8, 10, 22),
@@ -78,6 +78,8 @@ COLORS = {
     "teal":      (56, 209, 176),
     "white":     (250, 250, 255),
     "muted":     (176, 176, 200),
+    "bg_white":  (255, 255, 255),   # वीडियो का बैकग्राउंड (सफेद)
+    "black":     (0, 0, 0),         # चैनल नाम / Subscribers लेबल / काउंट का टेक्स्ट
 }
 CONFETTI_COLORS = [COLORS["gold"], COLORS["coral"], COLORS["teal"], COLORS["violet"], COLORS["white"]]
 
@@ -85,6 +87,27 @@ ASSET_DIR = Path(__file__).resolve().parent / "assets"
 FONT_DISPLAY = ASSET_DIR / "Baloo2-Variable.ttf"     # बड़ा काउंटर नंबर
 FONT_TITLE = ASSET_DIR / "Poppins-SemiBold.ttf"      # चैनल का नाम
 FONT_LABEL = ASSET_DIR / "Poppins-Regular.ttf"       # लेबल / मैसेज
+
+
+def _find_arial_black() -> Path:
+    """Arial Black फॉन्ट ढूंढता है (Windows में C:\\Windows\\Fonts\\ariblk.ttf).
+    चाहें तो ariblk.ttf को assets/ फोल्डर में भी रख सकते हैं.
+    नहीं मिला तो Poppins-Bold इस्तेमाल होगा."""
+    candidates = [
+        ASSET_DIR / "ariblk.ttf",
+        Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "ariblk.ttf",
+        Path("/Library/Fonts/Arial Black.ttf"),
+        Path("/System/Library/Fonts/Supplemental/Arial Black.ttf"),
+        Path("/usr/share/fonts/truetype/msttcorefonts/Arial_Black.ttf"),
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    print("[warning] Arial Black (ariblk.ttf) not found - falling back to Poppins-Bold")
+    return ASSET_DIR / "Poppins-Bold.ttf"
+
+
+FONT_COUNT = _find_arial_black()                     # सब्सक्राइबर काउंट (Arial Black)
 
 random.seed()
 
@@ -198,36 +221,11 @@ def placeholder_avatar(size: int, initial: str) -> Image.Image:
 
 
 # --------------------------------------------------------------------------
-# 4) प्रीमियम बैकग्राउंड (ग्रेडिएंट + सॉफ्ट बोकेह लाइट्स) — एक बार बनाकर कैश
+# 4) बैकग्राउंड (सफेद) — एक बार बनाकर कैश
 # --------------------------------------------------------------------------
 def make_background(w, h) -> Image.Image:
-    bg = Image.new("RGB", (w, h))
-    top, bottom = COLORS["bg_top"], COLORS["bg_bottom"]
-    px = bg.load()
-    for y in range(h):
-        t = y / (h - 1)
-        row = tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3))
-        for x in range(w):
-            px[x, y] = row
-
-    bokeh_layer = Image.new("RGB", (w, h), (0, 0, 0))
-    bd = ImageDraw.Draw(bokeh_layer)
-    bokeh_spots = [
-        (int(w * 0.15), int(h * 0.18), 220, COLORS["violet"]),
-        (int(w * 0.85), int(h * 0.30), 260, COLORS["coral"]),
-        (int(w * 0.20), int(h * 0.80), 240, COLORS["teal"]),
-        (int(w * 0.80), int(h * 0.88), 200, COLORS["gold"]),
-    ]
-    for (cx, cy, r, col) in bokeh_spots:
-        bd.ellipse((cx - r, cy - r, cx + r, cy + r), fill=col)
-    bokeh_layer = bokeh_layer.filter(ImageFilter.GaussianBlur(140))
-    bg = Image.blend(bg, bokeh_layer, 0.35)
-
-    vign = Image.new("L", (w, h), 0)
-    ImageDraw.Draw(vign).ellipse((-w * 0.25, -h * 0.15, w * 1.25, h * 1.05), fill=70)
-    vign = vign.filter(ImageFilter.GaussianBlur(180))
-    bg = Image.composite(bg, Image.new("RGB", (w, h), (0, 0, 0)), vign)
-    return bg
+    """सादा सफेद बैकग्राउंड."""
+    return Image.new("RGB", (w, h), COLORS["bg_white"])
 
 
 # --------------------------------------------------------------------------
@@ -359,6 +357,7 @@ def ease_out_cubic(t):
 # --------------------------------------------------------------------------
 AVATAR_SIZE = 440
 RING_PAD = 18
+COUNT_BASELINE_Y = int(H * 0.56) + 227   # काउंट की baseline (पुराने लेआउट जैसी ही)
 
 
 def render_frame(bg, avatar, channel_name, count, fx: EffectSystem, ring_pulse, gift_message=None):
@@ -381,15 +380,16 @@ def render_frame(bg, avatar, channel_name, count, fx: EffectSystem, ring_pulse, 
     frame.paste(avatar, (cx - AVATAR_SIZE // 2, ay - AVATAR_SIZE // 2), avatar)
 
     title_font = load_font(FONT_TITLE, 62)
-    draw_center_text(draw, cx, ay + AVATAR_SIZE // 2 + 46, channel_name, title_font, COLORS["white"])
+    draw_center_text(draw, cx, ay + AVATAR_SIZE // 2 + 46, channel_name, title_font, COLORS["black"])
 
     label_font = load_font(FONT_LABEL, 36)
-    draw_center_text(draw, cx, ay + AVATAR_SIZE // 2 + 122, "Subscribers", label_font, COLORS["muted"], tracking=3)
+    draw_center_text(draw, cx, ay + AVATAR_SIZE // 2 + 122, "Subscribers", label_font, COLORS["black"], tracking=3)
 
     scale = 1.0 + ring_pulse * 0.06
-    num_font = load_font(FONT_DISPLAY, int(210 * scale), "ExtraBold")
+    num_font = load_font(FONT_COUNT, int(210 * scale))
     count_text = f"{count:,}"
-    draw_center_text(draw, cx, int(H * 0.56), count_text, num_font, COLORS["gold"])
+    # baseline पहले जैसी ही रखी है (ताकि नंबर की पोज़िशन न बदले); Arial Black, काला रंग
+    draw.text((cx, COUNT_BASELINE_Y), count_text, font=num_font, fill=COLORS["black"], anchor="ms")
 
     if gift_message:
         msg_font = load_font(FONT_LABEL, 34)
@@ -588,7 +588,7 @@ def process_one(channel_query, target, outdir, name_pattern, message=None,
 # 11) CLI
 # --------------------------------------------------------------------------
 def main():
-    ap = argparse.ArgumentParser(description="Subscriber Gift Video Generator (Bulk)")
+    ap = argparse.ArgumentParser(description="Subscriber Proof Video Generator (Bulk)")
     ap.add_argument("--channel", help="चैनल का @handle, पूरा URL, या सिर्फ नाम")
     ap.add_argument("--target", type=int, choices=MILESTONES, help=f"{MILESTONES}")
     ap.add_argument("--name", help="चैनल का नाम मैन्युअली (fetch न हो तो)")

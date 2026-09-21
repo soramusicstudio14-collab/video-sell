@@ -5,13 +5,25 @@ worker.py — Gift Video automation worker.
 Ye script Google Sheet ("Orders" tab) me dekhkar:
   1. Jo order "paid" hai aur delivery ka time aa gaya hai, unke liye
      tumhari subscriber_gift_video.py se video banata hai.
+     - PC kitne bhi din/ghante band raha ho, koi time-limit nahi hai — jab bhi
+       worker chalega, jitne bhi "paid" orders due hain (chahe bahut purane
+       ho), sab ek-ek karke process honge.
+     - Agar YouTube par handle nahi milta (private/delete/typo), tab bhi video
+       generation NAHI ruktа — handle ke naam se hi ek fallback naam banaya
+       jata hai (jaise @gyan_factology -> "Gyan Factology") aur video bina
+       avatar ke (initial-letter circle ke sath) ban jaata hai. Customer ko
+       video har haal me deliver hoti hai.
   2. Video seedha customer ke EMAIL par attachment ke roop me bhej deta hai
      (koi Drive/storage ki zaroorat nahi).
      - Agar video file EMAIL_MAX_ATTACHMENT_MB se badi hai (email attachment
        limits ki wajah se), tab hi Google Drive par upload karke uska link
        email me bhejta hai — yeh sirf fallback hai.
   3. Sheet me status "delivered" (ya problem hone par "needs_manual") kar deta hai.
-  4. Kaam ho jaane ke baad local video file delete kar deta hai (storage rakhne
+  4. Delivery ho jaane par isi worker folder me `delivery_history.json` file me
+     order_id, yt_handle, email aur delivery time likh deta hai — ye ek extra
+     safety record hai taaki koi order galti se dobara deliver na ho (sheet
+     status ke sath-sath).
+  5. Kaam ho jaane ke baad local video file delete kar deta hai (storage rakhne
      ki zaroorat nahi), sirf fail hone par file rakhta hai taaki manually bhej sako.
 
 Usage:
@@ -64,6 +76,14 @@ SHEETS_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")  # s
 SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")  # channel photo/naam ke liye
+
+# Delivery history — is folder me hi JSON file me record rehta hai ki kaunse
+# order_id deliver ho chuke hain. Sheet ke "status" column ke sath-sath ye
+# ek EXTRA safety layer hai: agar kisi wajah se sheet update fail ho jaye ya
+# worker beech me crash ho jaye, tab bhi ye file dobara same order deliver
+# hone se rokti hai. PC kitne bhi din band rahe — jab bhi worker chalega,
+# jitne bhi "paid" order abhi tak history me nahi hain, sab process honge.
+HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "delivery_history.json")
 
 EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
 EMAIL_APP_PASSWORD = os.environ.get("EMAIL_APP_PASSWORD")
@@ -167,6 +187,36 @@ def update_row(tab, row_number, status=None, video_link=None, delivery_at=None):
         tab.update_cell(row_number, COL_DELIVERY_AT + 1, delivery_at)
 
 
+# ------------------------------------------------------------------ DELIVERY HISTORY
+def load_history():
+    """delivery_history.json se ab tak deliver ho chuke order_ids padhta hai."""
+    if not os.path.exists(HISTORY_FILE):
+        return {}
+    try:
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"History file padhne me error (naya bana denge): {e}")
+        return {}
+
+
+def save_history(history):
+    try:
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"History file save karne me error: {e}")
+
+
+def record_delivery(history, order_id, yt_handle, email):
+    history[order_id] = {
+        "yt_handle": yt_handle,
+        "email": email,
+        "delivered_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+    }
+    save_history(history)
+
+
 # ------------------------------------------------------------------ YOUTUBE
 def get_channel_info(yt_handle):
     """YouTube Data API se channel ka naam aur photo laata hai. Fail hone par None."""
@@ -189,6 +239,19 @@ def get_channel_info(yt_handle):
     except Exception as e:
         print(f"YouTube fetch fail: {e}")
         return None
+
+
+def fallback_channel_info(yt_handle):
+    """
+    YouTube par handle na mile (ya API fail ho) tab bhi video rukni nahi chahiye.
+    Handle se hi ek readable naam bana lete hain (@gyan_factology -> "Gyan Factology").
+    Avatar URL nahi dete — subscriber_gift_video.py khud is naam ke pehle letter
+    ka circle bana deta hai jab --avatar diya hi na jaye.
+    """
+    handle = yt_handle.lstrip("@").strip()
+    name = handle.replace("_", " ").replace(".", " ").replace("-", " ").strip()
+    name = " ".join(word.capitalize() for word in name.split()) or handle
+    return {"title": name, "photo_url": None}
 
 
 # ------------------------------------------------------------------ VIDEO GENERATION
@@ -229,7 +292,15 @@ def generate_video(channel_handle, channel_name, avatar_url, target_subs, order_
     if avatar_url:
         cmd += ["--avatar", avatar_url]
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=1800,
+        encoding="utf-8",
+        errors="replace",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
+    )
     if result.returncode != 0:
         raise RuntimeError(f"video script fail: {result.stderr[-800:]}")
 
@@ -303,6 +374,7 @@ def process_due_orders():
     sheet = get_sheet()
     write_heartbeat(sheet)
     tab, due = get_due_orders(sheet)
+    history = load_history()
 
     if not due:
         print(f"[{dt.datetime.now(dt.timezone.utc).isoformat()}] koi due order nahi.")
@@ -314,14 +386,20 @@ def process_due_orders():
         email = row[COL_EMAIL]
         subs = row[COL_SUBS]
 
+        # Extra safety: agar history me pehle se "delivered" record hai, to
+        # dobara mat bhejo (sheet update chahe kisi wajah se miss ho gaya ho).
+        if order_id in history:
+            print(f"Skip {order_id} — history file ke hisaab se pehle hi deliver ho chuka hai.")
+            update_row(tab, row_number, status="delivered")
+            continue
+
         print(f"Processing order {order_id} ({yt_handle}, {subs} subs)")
         video_path = None
         try:
             info = get_channel_info(yt_handle)
             if info is None:
-                print(f"  ⚠️ YouTube info nahi mila — needs_manual")
-                update_row(tab, row_number, status="needs_manual")
-                continue
+                print(f"  ⚠️ YouTube handle nahi mila — fallback (naam se initial-circle) use kar rahe hain")
+                info = fallback_channel_info(yt_handle)
 
             video_path = generate_video(
                 channel_handle=yt_handle,
@@ -350,6 +428,9 @@ def process_due_orders():
             update_row(tab, row_number,
                        status="delivered" if sent else "needs_manual",
                        video_link=video_link)
+
+            if sent:
+                record_delivery(history, order_id, yt_handle, email)
 
             if sent and video_path and os.path.exists(video_path):
                 os.remove(video_path)
